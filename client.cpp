@@ -3,8 +3,10 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <thread>
+
 using namespace std;
 
+std::mutex io_mutex;
 class Client{
 private:
     int port = 12348;
@@ -35,8 +37,21 @@ public:
         memset(fileMessage, 0, sizeof(fileMessage));
         ssize_t bytes = recv(clientSocket, fileMessage, sizeof(fileMessage), 0);
         if (bytes > 0) {
-            cout << fileMessage << endl;
+            lock_guard<std::mutex> io_lock(io_mutex);
+            string messageToStr(fileMessage, bytes);
+            if (messageToStr.find("receive?") != std::string::npos) {
+                size_t startPos = messageToStr.find("wants to send ") + std::string("wants to send ").length();;
+                size_t endPos = messageToStr.find(" file");
+                string filename = messageToStr.substr(startPos, endPos - startPos);
+                messageToStr += "\nResponse (YES/NO and filename): ";
 
+                cout << messageToStr;
+                string response;
+                cin >> response;
+                send(clientSocket, response.c_str(), response.length(), 0);
+            } else {
+                cout << messageToStr << endl;
+            }
         } else {
             cerr << "Failed to receive message from server." << endl;
         }
@@ -57,9 +72,9 @@ public:
     };
 
     void chat(){
-        std::string message;
+        string message;
         while (true) {
-            std::thread threadForMessagesReceiving(&Client::receiveServerMessage, this);
+            thread threadForMessagesReceiving(&Client::receiveServerMessage, this);
             threadForMessagesReceiving.detach();
             cout << "Enter the message: ";
             std::getline(std::cin, message);

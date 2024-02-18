@@ -8,10 +8,12 @@
 #include <thread>
 #include <iostream>
 #include <utility>
+#include <sys/stat.h>
 
 struct Message {
     std::string content;
     std::string clientName;
+    std::string filename;
     int sendClientSocket;
     int id;
 };
@@ -49,10 +51,10 @@ public:
         }
         messageCondition.notify_one();
     }
-
-    std::vector<int> getAllClients() const {
-        return clients;
-    }
+//
+//    std::vector<int> getAllClients() const {
+//        return clients;
+//    }
 
     std::string getNameRoom() const {
         return name;
@@ -67,14 +69,27 @@ public:
             {
                 Message message = messageQueue.front();
                 messageQueue.pop();
-                lock.unlock();
-                for (int clientSocket : clients) {
-                    if (clientSocket != message.sendClientSocket){
-                        std::string messageContentName = "\n" + message.clientName + ": " + message.content;
-                        send(clientSocket, messageContentName.c_str(), messageContentName.length(), 0);
+                if (message.content.find("SEND ") == 0){
+                    struct stat info{};
+                    std::cout << "Client " << message.sendClientSocket << " sends a file " << message.filename << std::endl;
+                    lock.unlock();
+                    for (int clientSocket : clients) {
+                        if (clientSocket != message.sendClientSocket){
+                            std::string askClient = "\nCLIENT " + message.clientName + " wants to send " + message.filename + " file which size is 1 MB, do you want to receive?";
+                            send(clientSocket, askClient.c_str(), askClient.length(), 0);
+                        }
                     }
+                    lock.lock();
+                } else {
+                    lock.unlock();
+                    for (int clientSocket : clients) {
+                        if (clientSocket != message.sendClientSocket){
+                            std::string messageContentName = "\n" + message.clientName + ": " + message.content;
+                            send(clientSocket, messageContentName.c_str(), messageContentName.length(), 0);
+                        }
+                    }
+                    lock.lock();
                 }
-                lock.lock();
             }
             if (clients.empty()){
                 break;

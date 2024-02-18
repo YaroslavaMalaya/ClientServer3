@@ -5,7 +5,8 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-void File::copyFile(const std::string& path1, const std::string& path2, const int socket, const std::string& com) {
+std::mutex m;
+void File::copyFile(const std::string& path1, const std::string& path2, const int socket) {
     std::ifstream file(path1, std::ios::binary | std::ios::ate); // pointer in the end of the file since we use ate
 
     if (file.is_open()) {
@@ -32,11 +33,11 @@ void File::copyFile(const std::string& path1, const std::string& path2, const in
             outFile.write(buffer, bytes);
         }
 
-        const char *confirm = "File was opened and saved successfully.";
+        const char *confirm = "File was saved successfully.";
         send(socket, confirm, strlen(confirm), 0);
 
         m.lock();
-        std::cout << com << " response sent to client " << socket << std::endl;
+        std::cout << " CLIENT " << socket << "accept and download a file" << std::endl;
         m.unlock();
     } else {
         m.lock();

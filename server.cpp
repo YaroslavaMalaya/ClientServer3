@@ -5,6 +5,7 @@
 #include <thread>
 #include "file.h"
 #include "room.h"
+#include <filesystem>
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 class MacServerConnection{
@@ -70,6 +71,7 @@ private:
     std::vector<std::thread> clientThreads;
     std::vector<std::unique_ptr<Room>> rooms;
     std::mutex roomsMutex;
+    std::string dirFromCopy;
 
     void listenSocket(){
         if (macServer.listenConnection() == -1) {
@@ -107,12 +109,24 @@ public:
     }
 
     void setPaths(std::string& clientName, std::string& clientFolderPath, std::string& serverFolderPath) {
-        if (clientName == "client1") {
-            clientFolderPath = "/Users/Yarrochka/Mine/Study/CSC/clientserver3/ClientServer3/client1";
-            serverFolderPath = "/Users/Yarrochka/Mine/Study/CSC/clientserver3/ClientServer3/serverClient1";
-        } else if (clientName == "client2") {
-            clientFolderPath = "/Users/Yarrochka/Mine/Study/CSC/clientserver3/ClientServer3/client2";
-            serverFolderPath = "/Users/Yarrochka/Mine/Study/CSC/clientserver3/ClientServer3/serverClient2";
+        std::string baseFoldersPath = "/Users/Yarrochka/Mine/Study/CSC/clientserver3/ClientServer3/";
+        clientFolderPath = baseFoldersPath + clientName;
+        serverFolderPath = baseFoldersPath + "serverC" + clientName.substr(1);
+
+        if (!std::__fs::filesystem::exists(clientFolderPath)) {
+            if (std::__fs::filesystem::create_directories(clientFolderPath)) {
+                std::cout << "Created client directory: " << clientFolderPath << std::endl;
+            } else {
+                std::cerr << "Failed to create client directory: " << clientFolderPath << std::endl;
+            }
+        }
+
+        if (!std::__fs::filesystem::exists(serverFolderPath)) {
+            if (std::__fs::filesystem::create_directories(serverFolderPath)) {
+                std::cout << "Created server directory: " << serverFolderPath << std::endl;
+            } else {
+                std::cerr << "Failed to create server directory: " << serverFolderPath << std::endl;
+            }
         }
     }
 
@@ -155,12 +169,14 @@ public:
         std::string clientName;
         getNameAndRoom(clientSocket, clientName, roomName);
 
-//        std::string clientFolderPath;
-//        std::string serverFolderPath;
-//        setPaths(clientName, clientFolderPath, serverFolderPath);
+        std::string clientFolderPath;
+        std::string serverFolderPath;
+        setPaths(clientName, clientFolderPath, serverFolderPath);
 
         Room *room = findCreateRoom(roomName);
         room->addClient(clientSocket);
+        std::string pathToFile;
+        std::string pathToCopiedFile;
 
         while (true) {
             char buffer[1024];
@@ -171,8 +187,26 @@ public:
                 if (content == "EXIT") {
                     room->removeClient(clientSocket);
                     std::cout << "Client " << clientSocket << " has left the room " << roomName << std::endl;
+                    getNameAndRoom(clientSocket, clientName, roomName);
+                } else if (content.find("YES ") == 0) {
+                    std::string filename = content.substr(4);
+                    pathToFile = dirFromCopy;
+                    pathToCopiedFile = clientFolderPath + "/" + filename;
+                    File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
+                } else if (content.find("NO ") == 0) {
+                    std::string filename = content.substr(3);
+                    pathToFile = serverFolderPath + "/" + filename;
+                    std::__fs::filesystem::remove(pathToFile);
+                } else if (content.find("SEND ") == 0) {
+                    std::string filename = content.substr(5);
+                    pathToFile = clientFolderPath + "/" + filename;
+                    pathToCopiedFile = serverFolderPath + "/" + filename;
+                    File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
+                    dirFromCopy = pathToCopiedFile;
+                    Message message{content, clientName, filename, clientSocket, room->nextId++};
+                    room->addMessageToQueue(message);
                 } else {
-                    Message message{content, clientName, clientSocket, room->nextId++};
+                    Message message{content, clientName, " ", clientSocket, room->nextId++};
                     room->addMessageToQueue(message);
                 }
             } else {
