@@ -49,6 +49,10 @@ public:
                 string response;
                 cin >> response;
                 send(clientSocket, response.c_str(), response.length(), 0);
+            } else if (messageToStr.find("rejoin to another room") != std::string::npos){
+                sendClientName();
+                chooseRoom();
+                chat();
             } else {
                 cout << messageToStr << endl;
             }
@@ -79,6 +83,11 @@ public:
             cout << "Enter the message: ";
             std::getline(std::cin, message);
             if (message == "EXIT") {
+                send(clientSocket, message.c_str(), message.size(), 0);
+                receiveServerMessage();
+                continue;
+            }
+            if (message == "EXIT AND BREAK") {
                 break;
             }
             send(clientSocket, message.c_str(), message.size(), 0);

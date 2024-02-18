@@ -47,27 +47,3 @@ void File::copyFile(const std::string& path1, const std::string& path2, const in
         send(socket, error, strlen(error), 0);
     }
 }
-
-void File::getInfo(const std::string& path1, const int socket) {
-    struct stat info;
-
-    if (stat(path1.c_str(), &info) != 0) {
-        m.lock();
-        std::cerr << "Error: " << strerror(errno) << std::endl;
-        m.unlock();
-        const char *error = "Info cannot be obtained.";
-        send(socket, error, strlen(error), 0);
-    } else {
-        std::ostringstream information;
-        information << "Info.\n"
-                    << "Size: " << info.st_size << "\n"
-                    << "Created: " << std::asctime(std::localtime(&info.st_ctime))
-                    << "Modified: " << std::asctime(std::localtime(&info.st_mtime));
-        std::string info = information.str();
-        send(socket, info.c_str(), info.size(), 0);
-
-        m.lock();
-        std::cout << "INFO response sent to client " << socket << std::endl;
-        m.unlock();
-    }
-}

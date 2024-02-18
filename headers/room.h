@@ -26,6 +26,8 @@ public:
     std::queue<Message> messageQueue;
     std::mutex mut;
     std::condition_variable messageCondition;
+    std::condition_variable allReceivedCondition;
+
     int nextId = 0;
 
     explicit Room(std::string name) : name(std::move(name)) {
@@ -51,10 +53,18 @@ public:
         }
         messageCondition.notify_one();
     }
-//
+
 //    std::vector<int> getAllClients() const {
 //        return clients;
 //    }
+
+    void printAllClients() {
+        std::cout << "Clients in the room: ";
+        for (int clientSocket : clients) {
+            std::cout << clientSocket << " ";
+        }
+        std::cout << std::endl;
+    }
 
     std::string getNameRoom() const {
         return name;
@@ -70,17 +80,18 @@ public:
                 Message message = messageQueue.front();
                 messageQueue.pop();
                 if (message.content.find("SEND ") == 0){
-                    struct stat info{};
+//                    struct stat info{};
                     std::cout << "Client " << message.sendClientSocket << " sends a file " << message.filename << std::endl;
                     lock.unlock();
                     for (int clientSocket : clients) {
                         if (clientSocket != message.sendClientSocket){
-                            std::string askClient = "\nCLIENT " + message.clientName + " wants to send " + message.filename + " file which size is 1 MB, do you want to receive?";
+                            std::string askClient = "\nCLIENT " + message.clientName + " wants to send " + message.filename + " file, do you want to receive?";
                             send(clientSocket, askClient.c_str(), askClient.length(), 0);
                         }
                     }
                     lock.lock();
                 } else {
+//                    std::cout << "Client " << message.sendClientSocket << " sends a message " << message.content << std::endl;
                     lock.unlock();
                     for (int clientSocket : clients) {
                         if (clientSocket != message.sendClientSocket){
