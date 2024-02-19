@@ -40,4 +40,5 @@ It includes a unique name, a thread for broadcasting messages, a list of client 
 ![Result Screenshot](pictures/resultFiles.png)
 
 ## Explanation of Different Use Cases Using UML Diagram
+![Use Case Diagram](pictures/diagram1.jpg)
 
