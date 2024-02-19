@@ -6,7 +6,6 @@
 
 using namespace std;
 
-std::mutex io_mutex;
 class Client{
 private:
     int port = 12348;
@@ -36,8 +35,8 @@ public:
         char fileMessage[1024];
         memset(fileMessage, 0, sizeof(fileMessage));
         ssize_t bytes = recv(clientSocket, fileMessage, sizeof(fileMessage), 0);
+        cout << "RECEIVE: " << bytes << endl;
         if (bytes > 0) {
-            lock_guard<std::mutex> io_lock(io_mutex);
             string messageToStr(fileMessage, bytes);
             if (messageToStr.find("receive?") != std::string::npos) {
                 size_t startPos = messageToStr.find("wants to send ") + std::string("wants to send ").length();;
@@ -50,6 +49,7 @@ public:
                 cin >> response;
                 send(clientSocket, response.c_str(), response.length(), 0);
             } else if (messageToStr.find("rejoin to another room") != std::string::npos){
+                cout << messageToStr << endl;
                 sendClientName();
                 chooseRoom();
                 chat();
@@ -77,15 +77,15 @@ public:
 
     void chat(){
         string message;
+        thread threadForMessagesReceiving(&Client::receiveServerMessage, this);
+        threadForMessagesReceiving.detach();
         while (true) {
-            thread threadForMessagesReceiving(&Client::receiveServerMessage, this);
-            threadForMessagesReceiving.detach();
             cout << "Enter the message: ";
             std::getline(std::cin, message);
-            if (message == "EXIT") {
+            if (message.find("EXIT") == 0) {
                 send(clientSocket, message.c_str(), message.size(), 0);
                 receiveServerMessage();
-                continue;
+                break;
             }
             if (message == "EXIT AND BREAK") {
                 break;

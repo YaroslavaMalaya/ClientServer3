@@ -92,9 +92,12 @@ public:
                     lock.lock();
                 } else {
 //                    std::cout << "Client " << message.sendClientSocket << " sends a message " << message.content << std::endl;
+                    std::cout << "WANT SEND " << std::endl;
+                    printAllClients();
                     lock.unlock();
                     for (int clientSocket : clients) {
                         if (clientSocket != message.sendClientSocket){
+                            std::cout << "SEND " << std::endl;
                             std::string messageContentName = "\n" + message.clientName + ": " + message.content;
                             send(clientSocket, messageContentName.c_str(), messageContentName.length(), 0);
                         }
