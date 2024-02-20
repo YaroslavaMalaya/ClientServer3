@@ -26,19 +26,27 @@ It includes a unique name, a thread for broadcasting messages, a list of client 
 
 ## Screenshots of Different Use Cases
 ### Join Room and Send Messages:
-![Message Screenshot](pictures/message1.png)\
-![Message Screenshot](pictures/message2.png)\
-![MessageJoin Screenshot](pictures/join1.png)\
+![Message Client1](pictures/message1.png)\
+![Message Client2](pictures/message2.png)\
+![MessageJoin Server Side](pictures/message.png)\
 
 ###  Send File, Accept File, Decline File:
-![File Screenshot](pictures/file1.png)\
-![File Screenshot](pictures/file2.png)\
-![File Screenshot](pictures/file3.png)\
-![Decline Screenshot](pictures/decline1.png)\
-![Decline Screenshot](pictures/decline2.png)\
-![Decline Screenshot](pictures/decline3.png)\
-![Result Screenshot](pictures/resultFiles.png)
+![File Client1](pictures/file1.png)\
+![File Client2](pictures/file2.png)\
+![File Server Side](pictures/file3.png)\
+![Decline Client1](pictures/decline1.png)\
+![Decline Client2](pictures/decline2.png)\
+![Decline Server Side](pictures/decline3.png)\
+![Result](pictures/resultFiles.png)
+
+###  Rejoining to Another Room:
+![Rejoin Server Side](pictures/rejoin.png)\
+![Rejoin Client1 Side](pictures/rejoin1.png)\
+![Rejoin Client2 Side](pictures/rejoin2.png)
 
 ## Explanation of Different Use Cases Using UML Diagram
-![Use Case Diagram](pictures/diagram1.jpg)
+###  Use Case Diagram:
+![Use Case Diagram](pictures/diagram1.png)
 
+###  Sequence  Diagram:
+![Use Case Diagram](pictures/diagram2.png)
