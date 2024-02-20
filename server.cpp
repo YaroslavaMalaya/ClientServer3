@@ -145,7 +145,7 @@ public:
         if (bytesRead <= 0) {
             pthread_mutex_lock(&mutex);
             std::cerr << "Failed to read client's name.\n";
-            pthread_mutex_lock(&mutex);
+            pthread_mutex_unlock(&mutex);
             close(clientSocket);
             return;
         }
@@ -156,7 +156,7 @@ public:
         if (bytesRead <= 0) {
             pthread_mutex_lock(&mutex);
             std::cerr << "Failed to read room name.\n";
-            pthread_mutex_lock(&mutex);
+            pthread_mutex_unlock(&mutex);
 
             close(clientSocket);
             return;
@@ -197,10 +197,11 @@ public:
         while (true) {
             if (rejoin) {
                 getNameAndRoom(clientSocket, clientName, roomName);
+                pthread_mutex_lock(&mutex);
                 room = findCreateRoom(roomName);
                 room->addClient(clientSocket);
                 rejoin = false;
-                continue;
+                pthread_mutex_unlock(&mutex);
             } else {
 //                std::cout << room->getNameRoom() << std::endl;
                 char buffer[1024];
@@ -208,33 +209,40 @@ public:
                 ssize_t receivedBytes = macServer.recvM(clientSocket, buffer, sizeof(buffer), 0);
                 if (receivedBytes > 0) {
                     std::string content(buffer, receivedBytes);
-                    if (content == "EXIT") {
+                    if (content == "REJOIN") {
                         room->removeClient(clientSocket);
 
                         pthread_mutex_lock(&mutex);
-                        std::cout << "Client " << clientSocket << " has left the room " << roomName << std::endl;
+                        std::cout << "Client " << clientSocket << " has left the room " << roomName << ". And will be rejoining to another." << std::endl;
                         pthread_mutex_unlock(&mutex);
 
-                        const char *confirm = "\nYou can rejoin to another room.\n";
-                        MacServerConnection::sendM(clientSocket, confirm, strlen(confirm), 0);
+                        pthread_mutex_lock(&mutex);
                         rejoin = true;
+                        pthread_mutex_unlock(&mutex);
+
                     } else if (content.find("YES ") == 0) {
                         std::string filename = content.substr(4);
 
                         pthread_mutex_lock(&mutex);
                         pathToFile = dirFromCopy;
-                        pthread_mutex_unlock(&mutex);
-
                         pathToCopiedFile = clientFolderPath + "/" + filename;
+                        pthread_mutex_unlock(&mutex);
                         File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
                     } else if (content.find("NO ") == 0) {
                         std::string filename = content.substr(3);
+
+                        pthread_mutex_lock(&mutex);
                         pathToFile = serverFolderPath + "/" + filename;
+                        pthread_mutex_unlock(&mutex);
+
                         std::__fs::filesystem::remove(pathToFile);
                     } else if (content.find("SEND ") == 0) {
                         std::string filename = content.substr(5);
+                        pthread_mutex_lock(&mutex);
                         pathToFile = clientFolderPath + "/" + filename;
                         pathToCopiedFile = serverFolderPath + "/" + filename;
+                        pthread_mutex_unlock(&mutex);
+
                         File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
 
                         pthread_mutex_lock(&mutex);
@@ -242,10 +250,20 @@ public:
                         pthread_mutex_unlock(&mutex);
 
                         Message message{content, clientName, filename, clientSocket, room->nextId++};
+                        pthread_mutex_lock(&mutex);
                         room->addMessageToQueue(message);
+                        pthread_mutex_unlock(&mutex);
+                    } else if (content == "EXIT") {
+                        room->removeClient(clientSocket);
+
+                        pthread_mutex_lock(&mutex);
+                        std::cout << "Client " << clientSocket << " has left the room " << roomName << std::endl;
+                        pthread_mutex_unlock(&mutex);
                     } else {
                         Message message{content, clientName, " ", clientSocket, room->nextId++};
+                        pthread_mutex_lock(&mutex);
                         room->addMessageToQueue(message);
+                        pthread_mutex_unlock(&mutex);
                     }
                 } else {
                     macServer.error("Received failed.");

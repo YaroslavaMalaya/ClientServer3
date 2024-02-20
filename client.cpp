@@ -12,6 +12,7 @@ private:
     const char* serverIp = "127.0.0.1";
     int clientSocket;
     struct sockaddr_in serverAddr;
+    std::thread receiveThread;
 
 public:
     Client(){
@@ -35,7 +36,6 @@ public:
         char fileMessage[1024];
         memset(fileMessage, 0, sizeof(fileMessage));
         ssize_t bytes = recv(clientSocket, fileMessage, sizeof(fileMessage), 0);
-        cout << "RECEIVE: " << bytes << endl;
         if (bytes > 0) {
             string messageToStr(fileMessage, bytes);
             if (messageToStr.find("receive?") != std::string::npos) {
@@ -48,11 +48,6 @@ public:
                 string response;
                 cin >> response;
                 send(clientSocket, response.c_str(), response.length(), 0);
-            } else if (messageToStr.find("rejoin to another room") != std::string::npos){
-                cout << messageToStr << endl;
-                sendClientName();
-                chooseRoom();
-                chat();
             } else {
                 cout << messageToStr << endl;
             }
@@ -77,17 +72,26 @@ public:
 
     void chat(){
         string message;
-        thread threadForMessagesReceiving(&Client::receiveServerMessage, this);
-        threadForMessagesReceiving.detach();
         while (true) {
+            if (receiveThread.joinable()) {
+                receiveThread.join();
+            }
+            receiveThread = std::thread(&Client::receiveServerMessage, this);
+            receiveThread.detach();
+
             cout << "Enter the message: ";
-            std::getline(std::cin, message);
-            if (message.find("EXIT") == 0) {
+            getline(std::cin, message);
+            if (message.find("REJOIN") == 0) {
                 send(clientSocket, message.c_str(), message.size(), 0);
-                receiveServerMessage();
-                break;
+                cout << "\nYou can rejoin to another room." << endl;
+                sendClientName();
+                chooseRoom();
+                continue;
             }
             if (message == "EXIT AND BREAK") {
+                if (receiveThread.joinable()) {
+                    receiveThread.join();
+                }
                 break;
             }
             send(clientSocket, message.c_str(), message.size(), 0);
@@ -95,6 +99,9 @@ public:
     }
 
     ~Client() {
+        if (receiveThread.joinable()) {
+            receiveThread.join();
+        }
         close(clientSocket);
     }
 
