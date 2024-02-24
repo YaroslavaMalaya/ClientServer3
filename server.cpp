@@ -7,7 +7,7 @@
 #include "room.h"
 #include <filesystem>
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+std:: mutex mutex;
 class MacServerConnection{
 private:
     int serverSocket;
@@ -31,9 +31,8 @@ public:
     }
 
     void error(const char* message) const {
-        pthread_mutex_lock(&mutex);
+        std::lock_guard<std::mutex> lock(mutex);
         perror(message);
-        pthread_mutex_unlock(&mutex);
     }
 
     int listenConnection() const {
@@ -72,6 +71,7 @@ private:
     std::vector<std::unique_ptr<Room>> rooms;
     std::mutex roomsMutex;
     std::string dirFromCopy;
+    int sendClientSocket;
 
     void listenSocket(){
         if (macServer.listenConnection() == -1) {
@@ -87,9 +87,9 @@ private:
                     break;
                 }
 
-                pthread_mutex_lock(&mutex);
+                mutex.lock();
                 std::cout << "Accepted connection from " << inet_ntoa(clientAddr.sin_addr) << ":" << ntohs(clientAddr.sin_port) << std::endl;
-                pthread_mutex_unlock(&mutex);
+                mutex.unlock();
 
                 clientThreads.emplace_back(&Server::handlingCommunication, this, clientSocket);
             }
@@ -110,30 +110,30 @@ public:
 
     void setPaths(std::string& clientName, std::string& clientFolderPath, std::string& serverFolderPath) {
         std::string baseFoldersPath = "/Users/Yarrochka/Mine/Study/CSC/clientserver3/ClientServer3/";
+        mutex.lock();
         clientFolderPath = baseFoldersPath + clientName;
         serverFolderPath = baseFoldersPath + "serverC" + clientName.substr(1);
+        mutex.unlock();
 
         if (!std::__fs::filesystem::exists(clientFolderPath)) {
             if (std::__fs::filesystem::create_directories(clientFolderPath)) {
-                pthread_mutex_lock(&mutex);
+                mutex.lock();
                 std::cout << "Created client directory: " << clientFolderPath << std::endl;
-                pthread_mutex_unlock(&mutex);
+                mutex.unlock();
             } else {
-                pthread_mutex_lock(&mutex);
-                std::cerr << "Failed to create client directory: " << clientFolderPath << std::endl;
-                pthread_mutex_unlock(&mutex);
+                std::string er = "Failed to create client directory: " + clientFolderPath;
+                macServer.error(er.c_str());
             }
         }
 
         if (!std::__fs::filesystem::exists(serverFolderPath)) {
             if (std::__fs::filesystem::create_directories(serverFolderPath)) {
-                pthread_mutex_lock(&mutex);
+                mutex.lock();
                 std::cout << "Created server directory: " << serverFolderPath << std::endl;
-                pthread_mutex_unlock(&mutex);
+                mutex.unlock();
             } else {
-                pthread_mutex_lock(&mutex);
-                std::cerr << "Failed to create server directory: " << serverFolderPath << std::endl;
-                pthread_mutex_unlock(&mutex);
+                std::string er = "Failed to create server directory: " + serverFolderPath;
+                macServer.error(er.c_str());
             }
         }
     }
@@ -143,29 +143,25 @@ public:
         memset(buffer, 0, sizeof(buffer));
         ssize_t bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
         if (bytesRead <= 0) {
-            pthread_mutex_lock(&mutex);
-            std::cerr << "Failed to read client's name.\n";
-            pthread_mutex_unlock(&mutex);
+            macServer.error("Failed to read client's name.\n");
             close(clientSocket);
             return;
         }
+        mutex.lock();
         clientName = std::string(buffer, bytesRead);
+        mutex.unlock();
 
         memset(buffer, 0, sizeof(buffer));
         bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
         if (bytesRead <= 0) {
-            pthread_mutex_lock(&mutex);
-            std::cerr << "Failed to read room name.\n";
-            pthread_mutex_unlock(&mutex);
-
+            macServer.error("Failed to read room name.\n");
             close(clientSocket);
             return;
         }
+        mutex.lock();
         roomName = std::string(buffer, bytesRead);
-
-        pthread_mutex_lock(&mutex);
         std::cout << "Client " << clientName << " will join to the room: " << roomName << std::endl;
-        pthread_mutex_unlock(&mutex);
+        mutex.unlock();
     }
 
     Room* findCreateRoom(const std::string& roomName) {
@@ -175,8 +171,91 @@ public:
                 return room.get();
             }
         }
-        rooms.emplace_back(std::make_unique<Room>(roomName));
+        rooms.emplace_back(std::unique_ptr<Room>(new Room(roomName)));
         return rooms.back().get();
+    }
+
+    void handleRejoin(int clientSocket, std::string& clientName, std::string& roomName, Room* &room, bool& rejoin) {
+        getNameAndRoom(clientSocket, clientName, roomName);
+        std::lock_guard<std::mutex> lock(roomsMutex);
+        room = findCreateRoom(roomName);
+        room->addClient(clientSocket);
+        rejoin = false;
+    }
+
+    void notifyRejoin(int clientSocket, std::string& roomName, Room* &room, bool& rejoin){
+        std::lock_guard<std::mutex> lock(roomsMutex);
+        room->removeClient(clientSocket);
+
+        mutex.lock();
+        std::cout << "Client " << clientSocket << " has left the room " << roomName << ". And will be rejoining to another." << std::endl;
+        rejoin = true;
+        mutex.unlock();
+    }
+
+    void acceptFile(int clientSocket, std::string& content, Room* &room, std::string& clientFolderPath){
+        std::string filename = content.substr(4);
+
+        mutex.lock();
+        std::string pathToCopiedFile = clientFolderPath + "/" + filename;
+        mutex.unlock();
+
+        File::copyFile(dirFromCopy, pathToCopiedFile, clientSocket);
+
+        std::lock_guard<std::mutex> lock(roomsMutex);
+        room->allClientsInTheRoom--;
+
+        if (room->allClientsInTheRoom == 1){
+            std::string confirm = "\nAll users have received your file.";
+            send(sendClientSocket, confirm.c_str(), confirm.length(), 0);
+            room->allClientsInTheRoom = room->clients.size();
+        }
+    }
+
+    void declineFile(std::string& content, Room* &room, std::string& serverFolderPath){
+        std::string filename = content.substr(3);
+
+        mutex.lock();
+        std::string pathToFile = serverFolderPath + "/" + filename;
+        std::__fs::filesystem::remove(pathToFile);
+        mutex.unlock();
+
+        std::lock_guard<std::mutex> lock(roomsMutex);
+        room->allClientsInTheRoom--;
+
+        if (room->allClientsInTheRoom == 1){
+            std::string confirm = "\nAll users have received your file.";
+            send(sendClientSocket, confirm.c_str(), confirm.length(), 0);
+            room->allClientsInTheRoom = room->clients.size();
+        }
+    }
+
+    void handleSendFile(int clientSocket, std::string& content, Room* &room, std::string& clientName, std::string& clientFolderPath, std::string& serverFolderPath){
+        std::string filename = content.substr(5);
+        mutex.lock();
+        std::string pathToFile = clientFolderPath + "/" + filename;
+        std::string pathToCopiedFile = serverFolderPath + "/" + filename;
+        File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
+
+        dirFromCopy = pathToCopiedFile;
+        sendClientSocket = clientSocket;
+        mutex.unlock();
+
+        Message message{content, clientName, filename, clientSocket, true};
+        std::lock_guard<std::mutex> lock(roomsMutex);
+        room->addMessageToQueue(message);
+
+        std::string wait = "\nPlease wait until all users receive the file.";
+        MacServerConnection::sendM(message.sendClientSocket, wait.c_str(), wait.length(), 0);
+    }
+
+    void handleExit(int clientSocket, std::string& roomName, Room* &room){
+        std::lock_guard<std::mutex> lock(room->mut);
+        room->removeClient(clientSocket);
+
+        mutex.lock();
+        std::cout << "Client " << clientSocket << " has left the room " << roomName << std::endl;
+        mutex.unlock();
     }
 
     void handlingCommunication(int clientSocket) {
@@ -189,81 +268,36 @@ public:
         setPaths(clientName, clientFolderPath, serverFolderPath);
 
         Room *room = findCreateRoom(roomName);
+
+        roomsMutex.lock();
         room->addClient(clientSocket);
-        std::string pathToFile;
-        std::string pathToCopiedFile;
+        roomsMutex.unlock();
+
         bool rejoin = false;
 
         while (true) {
             if (rejoin) {
-                getNameAndRoom(clientSocket, clientName, roomName);
-                pthread_mutex_lock(&mutex);
-                room = findCreateRoom(roomName);
-                room->addClient(clientSocket);
-                rejoin = false;
-                pthread_mutex_unlock(&mutex);
+                handleRejoin(clientSocket, clientName, roomName, room, rejoin);
             } else {
-//                std::cout << room->getNameRoom() << std::endl;
                 char buffer[1024];
                 memset(buffer, 0, sizeof(buffer));
                 ssize_t receivedBytes = macServer.recvM(clientSocket, buffer, sizeof(buffer), 0);
                 if (receivedBytes > 0) {
                     std::string content(buffer, receivedBytes);
                     if (content == "REJOIN") {
-                        room->removeClient(clientSocket);
-
-                        pthread_mutex_lock(&mutex);
-                        std::cout << "Client " << clientSocket << " has left the room " << roomName << ". And will be rejoining to another." << std::endl;
-                        pthread_mutex_unlock(&mutex);
-
-                        pthread_mutex_lock(&mutex);
-                        rejoin = true;
-                        pthread_mutex_unlock(&mutex);
-
+                        notifyRejoin(clientSocket, roomName, room, rejoin);
                     } else if (content.find("YES ") == 0) {
-                        std::string filename = content.substr(4);
-
-                        pthread_mutex_lock(&mutex);
-                        pathToFile = dirFromCopy;
-                        pathToCopiedFile = clientFolderPath + "/" + filename;
-                        pthread_mutex_unlock(&mutex);
-                        File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
+                        acceptFile(clientSocket, content, room, clientFolderPath);
                     } else if (content.find("NO ") == 0) {
-                        std::string filename = content.substr(3);
-
-                        pthread_mutex_lock(&mutex);
-                        pathToFile = serverFolderPath + "/" + filename;
-                        pthread_mutex_unlock(&mutex);
-
-                        std::__fs::filesystem::remove(pathToFile);
+                        declineFile(content, room, serverFolderPath);
                     } else if (content.find("SEND ") == 0) {
-                        std::string filename = content.substr(5);
-                        pthread_mutex_lock(&mutex);
-                        pathToFile = clientFolderPath + "/" + filename;
-                        pathToCopiedFile = serverFolderPath + "/" + filename;
-                        pthread_mutex_unlock(&mutex);
-
-                        File::copyFile(pathToFile, pathToCopiedFile, clientSocket);
-
-                        pthread_mutex_lock(&mutex);
-                        dirFromCopy = pathToCopiedFile;
-                        pthread_mutex_unlock(&mutex);
-
-                        Message message{content, clientName, filename, clientSocket, room->nextId++};
-                        pthread_mutex_lock(&mutex);
-                        room->addMessageToQueue(message);
-                        pthread_mutex_unlock(&mutex);
+                        handleSendFile(clientSocket, content, room, clientName, clientFolderPath, serverFolderPath);
                     } else if (content == "EXIT") {
-                        room->removeClient(clientSocket);
-
-                        pthread_mutex_lock(&mutex);
-                        std::cout << "Client " << clientSocket << " has left the room " << roomName << std::endl;
-                        pthread_mutex_unlock(&mutex);
+                        handleExit(clientSocket, roomName, room);
                     } else {
-                        Message message{content, clientName, " ", clientSocket, room->nextId++};
-                        pthread_mutex_lock(&mutex);
+                        Message message{content, clientName, " ", clientSocket};
+                        std::lock_guard<std::mutex> lock(roomsMutex);
                         room->addMessageToQueue(message);
-                        pthread_mutex_unlock(&mutex);
                     }
                 } else {
                     macServer.error("Received failed.");
@@ -272,9 +306,12 @@ public:
             }
         }
 
+        roomsMutex.lock();
         room->removeClient(clientSocket);
+        roomsMutex.unlock();
         close(clientSocket);
     }
+
 };
 
 int main() {

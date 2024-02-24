@@ -10,6 +10,10 @@ add_executable(client1 client.cpp)
 
 add_executable(client2 client.cpp)
 
+add_executable(client3 client.cpp)
+
+add_executable(client4 client.cpp)
+
 add_executable(server server.cpp
         headers/file.cpp
         headers/room.cpp)

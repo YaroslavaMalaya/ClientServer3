@@ -13,6 +13,9 @@ private:
     int clientSocket;
     struct sockaddr_in serverAddr;
     std::thread receiveThread;
+    std::mutex mut;
+    std::condition_variable allReceivedCondition;
+    bool canSend = true;
 
 public:
     Client(){
@@ -46,8 +49,18 @@ public:
 
                 cout << messageToStr;
                 string response;
-                cin >> response;
+                getline(std::cin, response);
                 send(clientSocket, response.c_str(), response.length(), 0);
+            } else if (messageToStr.find("wait until all users receive") != std::string::npos) {
+                cout << messageToStr << endl;
+                std::unique_lock<std::mutex> lock(mut);
+                canSend = false;
+                allReceivedCondition.wait(lock, [this] { return !canSend; });
+            } else if (messageToStr.find("\nAll users have received") == 0) {
+                std::lock_guard<std::mutex> lock(mut);
+                cout << messageToStr << endl;
+                canSend = true;
+                allReceivedCondition.notify_one();
             } else {
                 cout << messageToStr << endl;
             }
@@ -88,7 +101,7 @@ public:
                 chooseRoom();
                 continue;
             }
-            if (message == "EXIT AND BREAK") {
+            if (message == "EXIT") {
                 if (receiveThread.joinable()) {
                     receiveThread.join();
                 }
