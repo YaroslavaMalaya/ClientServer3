@@ -8,7 +8,7 @@ using namespace std;
 
 class Client{
 private:
-    int port = 12348;
+    int port = 12349;
     const char* serverIp = "127.0.0.1";
     int clientSocket;
     struct sockaddr_in serverAddr;

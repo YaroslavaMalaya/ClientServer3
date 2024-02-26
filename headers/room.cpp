@@ -46,21 +46,25 @@ void Room::broadcastMessages() {
             messageQueue.pop();
             if (message.isFile) {
                 lock.unlock();
+                clientsMutex.lock();
                 for (int clientSocket : clients) {
                     if (clientSocket != message.sendClientSocket) {
                         std::string askClient = "\nCLIENT " + message.clientName + " wants to send " + message.filename + " file, do you want to receive?";
                         send(clientSocket, askClient.c_str(), askClient.length(), 0);
                     }
                 }
+                clientsMutex.unlock();
                 lock.lock();
             } else {
                 lock.unlock();
+                clientsMutex.lock();
                 for (int clientSocket : clients) {
                     if (clientSocket != message.sendClientSocket){
                         std::string messageContentName = "\n" + message.clientName + ": " + message.content;
                         send(clientSocket, messageContentName.c_str(), messageContentName.length(), 0);
                     }
                 }
+                clientsMutex.unlock();
                 lock.lock();
             }
         }

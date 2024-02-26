@@ -24,6 +24,7 @@ private:
     std::vector<int> clients;
     std::queue<Message> messageQueue;
     std::mutex mut;
+    std::mutex clientsMutex;
     std::condition_variable messageCondition;
     int allClientsInTheRoom = 0;
 

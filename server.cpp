@@ -2,6 +2,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <memory>
 #include <thread>
 #include "file.h"
 #include "room.h"
@@ -64,7 +65,7 @@ public:
 
 class Server{
 private:
-    int port = 12348;
+    int port = 12349;
     sockaddr_in clientAddr;
     MacServerConnection macServer;
     std::vector<std::thread> clientThreads;
@@ -165,13 +166,12 @@ public:
     }
 
     Room* findCreateRoom(const std::string& roomName) {
-        std::lock_guard<std::mutex> lock(roomsMutex);
         for (auto& room : rooms) {
             if (room->getNameRoom() == roomName) {
                 return room.get();
             }
         }
-        rooms.emplace_back(std::unique_ptr<Room>(new Room(roomName)));
+        rooms.emplace_back(std::make_unique<Room>(roomName));
         return rooms.back().get();
     }
 
